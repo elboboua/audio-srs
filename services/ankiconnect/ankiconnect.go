@@ -70,7 +70,7 @@ func (acs *AnkiConnectService) GetDueCardIdsFromDeck(deck Deck) ([]CardId, error
 		"action": "findCards",
 		"version": 6,
 		"params": {
-			"query": "deck:%s is:due"
+		"query": "deck:%s (is:due OR is:new)"
 		}
 	}`, deck)
 
@@ -134,8 +134,6 @@ func (acs *AnkiConnectService) GetCardById(cardId CardId) (Card, error) {
 		return Card{}, err
 	}
 
-	fmt.Println(string(resp))
-
 	var cardByIdResp GetCardByIdResponse
 	decoder := json.NewDecoder(bytes.NewReader(resp))
 	err = decoder.Decode(&cardByIdResp)
@@ -148,4 +146,52 @@ func (acs *AnkiConnectService) GetCardById(cardId CardId) (Card, error) {
 	}
 
 	return cardByIdResp.Result[0], nil
+}
+
+// Ease is between 1 (Again) and 4 (Easy).
+type Ease int
+
+const (
+	AgainEase Ease = 1
+	HardEase  Ease = 2
+	GoodEase  Ease = 3
+	EasyEase  Ease = 4
+)
+
+type RepCardResponse struct {
+	Result []bool  `json:"result"`
+	Error  *string `json:"error"`
+}
+
+func (acs *AnkiConnectService) RepCard(cardId CardId, ease Ease) error {
+
+	reqBody := fmt.Appendf([]byte{}, `{
+		 "action": "answerCards",
+		 "version": 6,
+		 "params": {
+			"answers": [
+				{"cardId": %d, "ease": %d}
+			]
+		}
+	}`, cardId, ease)
+
+	resp, err := acs.makeRequest(reqBody)
+	if err != nil {
+		return err
+	}
+
+	var repCardResp RepCardResponse
+	decoder := json.NewDecoder(bytes.NewBuffer(resp))
+	err = decoder.Decode(&repCardResp)
+	if err != nil {
+		return err
+	}
+
+	if repCardResp.Error != nil {
+		return fmt.Errorf("There was an error repping cardId %d: %s", cardId, *repCardResp.Error)
+	} else if len(repCardResp.Result) > 0 && repCardResp.Result[0] == false {
+		return fmt.Errorf("There was an unknown error repping cardId %d", cardId)
+	}
+
+	return nil
 }
